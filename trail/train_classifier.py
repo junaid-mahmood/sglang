@@ -1,3 +1,18 @@
+# Copyright 2023-2024 SGLang Team
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+from __future__ import annotations
+
 """TRAIL MLP Classifier Training Script (Memory-Efficient).
 
 Streams embedding files from disk in batches to avoid OOM.
@@ -40,7 +55,9 @@ def scan_request_lengths(embedding_dir: str):
             total_entries += 1
         del entries
         if (i + 1) % 200 == 0:
-            print(f"  Scanned {i+1}/{len(pt_files)} files, {total_entries} entries, {len(rid_max_len)} requests")
+            print(
+                f"  Scanned {i+1}/{len(pt_files)} files, {total_entries} entries, {len(rid_max_len)} requests"
+            )
 
     print(f"Total: {total_entries} entries from {len(rid_max_len)} unique requests")
     return rid_max_len, pt_files
@@ -73,7 +90,9 @@ def stream_and_sample(pt_files, rid_max_len, max_samples=200000, seed=42):
         del entries
 
         if (i + 1) % 200 == 0:
-            print(f"  Streamed {i+1}/{len(pt_files)} files, sampled {len(X_list)}/{seen}")
+            print(
+                f"  Streamed {i+1}/{len(pt_files)} files, sampled {len(X_list)}/{seen}"
+            )
 
     print(f"Sampled {len(X_list)} from {seen} total entries")
     X = torch.stack(X_list)
@@ -89,7 +108,17 @@ def build_model(input_dim: int, num_bins: int) -> nn.Sequential:
     )
 
 
-def train(X_train, Y_train, X_test, Y_test, num_bins, num_epochs=30, batch_size=32, lr=0.01, device="cuda"):
+def train(
+    X_train,
+    Y_train,
+    X_test,
+    Y_test,
+    num_bins,
+    num_epochs=30,
+    batch_size=32,
+    lr=0.01,
+    device="cuda",
+):
     input_dim = X_train.shape[1]
     model = build_model(input_dim, num_bins).to(device)
     X_train = X_train.to(device)
@@ -99,7 +128,9 @@ def train(X_train, Y_train, X_test, Y_test, num_bins, num_epochs=30, batch_size=
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs, eta_min=0.0)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, num_epochs, eta_min=0.0
+    )
 
     perm = torch.randperm(X_train.size(0))
     X_train = X_train[perm]
@@ -113,8 +144,8 @@ def train(X_train, Y_train, X_test, Y_test, num_bins, num_epochs=30, batch_size=
         total_loss = 0.0
         n_batches = 0
         for batch_start in range(0, len(X_train), batch_size):
-            X_batch = X_train[batch_start:batch_start + batch_size]
-            Y_batch = Y_train[batch_start:batch_start + batch_size]
+            X_batch = X_train[batch_start : batch_start + batch_size]
+            Y_batch = Y_train[batch_start : batch_start + batch_size]
             optimizer.zero_grad()
             logits = model(X_batch)
             loss = criterion(logits, Y_batch)
@@ -131,7 +162,9 @@ def train(X_train, Y_train, X_test, Y_test, num_bins, num_epochs=30, batch_size=
             acc = (test_preds == Y_test).float().mean().item()
 
         avg_loss = total_loss / max(n_batches, 1)
-        print(f"Epoch {epoch+1:3d}/{num_epochs} | Loss: {avg_loss:.4f} | Test Acc: {acc:.4f} | LR: {optimizer.param_groups[0]['lr']:.6f}")
+        print(
+            f"Epoch {epoch+1:3d}/{num_epochs} | Loss: {avg_loss:.4f} | Test Acc: {acc:.4f} | LR: {optimizer.param_groups[0]['lr']:.6f}"
+        )
 
         if acc > best_acc:
             best_acc = acc
@@ -147,14 +180,20 @@ def main():
     parser.add_argument("--output-path", type=str, default="trail_classifier.pt")
     parser.add_argument("--num-bins", type=int, default=32)
     parser.add_argument("--max-output-len", type=int, default=512)
-    parser.add_argument("--max-samples", type=int, default=200000,
-                        help="Max training+test samples (reservoir sampled if more)")
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=200000,
+        help="Max training+test samples (reservoir sampled if more)",
+    )
     parser.add_argument("--num-epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--test-size", type=float, default=0.25)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+    )
     args = parser.parse_args()
 
     print("Pass 1: Scanning request lengths...")
@@ -167,7 +206,9 @@ def main():
     bins = np.linspace(0, args.max_output_len, args.num_bins + 1)
     Y_binned = np.digitize(Y_raw, bins) - 1
     Y_binned = np.clip(Y_binned, 0, args.num_bins - 1)
-    print(f"\nLabel range: [{Y_binned.min()}, {Y_binned.max()}], output len range: [{Y_raw.min()}, {Y_raw.max()}]")
+    print(
+        f"\nLabel range: [{Y_binned.min()}, {Y_binned.max()}], output len range: [{Y_raw.min()}, {Y_raw.max()}]"
+    )
 
     # Train/test split
     n = len(X)
@@ -182,12 +223,20 @@ def main():
     X_test = X[test_idx]
     Y_test = torch.tensor(Y_binned[test_idx], dtype=torch.long)
 
-    print(f"Train: {X_train.shape[0]}, Test: {X_test.shape[0]}, Hidden dim: {X_train.shape[1]}")
+    print(
+        f"Train: {X_train.shape[0]}, Test: {X_test.shape[0]}, Hidden dim: {X_train.shape[1]}"
+    )
 
     model, best_state = train(
-        X_train, Y_train, X_test, Y_test,
-        num_bins=args.num_bins, num_epochs=args.num_epochs,
-        batch_size=args.batch_size, lr=args.lr, device=args.device,
+        X_train,
+        Y_train,
+        X_test,
+        Y_test,
+        num_bins=args.num_bins,
+        num_epochs=args.num_epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        device=args.device,
     )
 
     save_dict = {

@@ -1,3 +1,18 @@
+# Copyright 2023-2024 SGLang Team
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+from __future__ import annotations
+
 """TRAIL Embedding Collection Script.
 
 Sends prompts from the Alpaca dataset to a running SGLang server
@@ -27,6 +42,7 @@ def load_alpaca_dataset(max_samples: int = 5000):
     """Load Alpaca dataset from HuggingFace datasets or local cache."""
     try:
         from datasets import load_dataset
+
         ds = load_dataset("tatsu-lab/alpaca", split="train")
         samples = []
         for i, item in enumerate(ds):
@@ -111,9 +127,11 @@ def main():
             total = completed + errors
             if total % 100 == 0:
                 elapsed = time.time() - start_time
-                print(f"  Progress: {total}/{len(prompts)} "
-                      f"({completed} ok, {errors} errors) "
-                      f"[{elapsed:.1f}s, {total/elapsed:.1f} req/s]")
+                print(
+                    f"  Progress: {total}/{len(prompts)} "
+                    f"({completed} ok, {errors} errors) "
+                    f"[{elapsed:.1f}s, {total/elapsed:.1f} req/s]"
+                )
 
     elapsed = time.time() - start_time
     print(f"\nDone! {completed}/{len(prompts)} completed, {errors} errors")

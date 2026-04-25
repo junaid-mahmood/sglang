@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
-import sys
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
@@ -77,6 +76,10 @@ IN_BATCH_PREFIX_CACHING_DEPRIORITIZE_THRESHOLD = int(
 
 IGNORE_EOS_RESERVE_TOKENS = 1
 
+# TRAIL: if a running request has predicted remaining tokens above this
+# threshold and the waiting request has no prediction yet, allow preemption.
+_TRAIL_LONG_REMAINING_THRESHOLD = 256
+
 
 class CacheAwarePolicy(Enum):
     """Scheduling policies that are aware of the tree cache."""
@@ -96,7 +99,9 @@ class CacheAgnosticPolicy(Enum):
     TRAIL_SPRPT = "trail-sprpt"  # TRAIL SRPT by (predicted - generated)
     TRAIL_LSPRPT = "trail-lsprpt"  # TRAIL limited-preemption SRPT (50% threshold)
     TRAIL_RPSPRPT = "trail-rpsprpt"  # TRAIL refined-prediction SRPT
-    TRAIL_LRPSPRPT = "trail-lrpsprpt"  # TRAIL limited refined-prediction SRPT (80% threshold)
+    TRAIL_LRPSPRPT = (
+        "trail-lrpsprpt"  # TRAIL limited refined-prediction SRPT (80% threshold)
+    )
 
 
 class SchedulePolicy:
@@ -167,9 +172,8 @@ class SchedulePolicy:
             elif policy == CacheAgnosticPolicy.TRAIL_SPRPT:
                 SchedulePolicy._sort_by_trail_sprpt(waiting_queue)
             elif policy == CacheAgnosticPolicy.TRAIL_LSPRPT:
-                SchedulePolicy._sort_by_trail_lsprpt(
-                    waiting_queue, 0.5
-                )
+                # Paper Section 4.2: LSPRPT uses a fixed 50% preemption threshold
+                SchedulePolicy._sort_by_trail_lsprpt(waiting_queue, 0.5)
             elif policy == CacheAgnosticPolicy.TRAIL_RPSPRPT:
                 SchedulePolicy._sort_by_trail_rpsprpt(waiting_queue)
             elif policy == CacheAgnosticPolicy.TRAIL_LRPSPRPT:
@@ -330,10 +334,12 @@ class SchedulePolicy:
     @staticmethod
     def _sort_by_trail_sprpt(waiting_queue: "List[Req]") -> None:
         """TRAIL SPRPT: priority = -(predicted_len - generated_len)."""
+
         def sprpt_key(req):
             if req.trail_state is None:
                 return float("inf")
             return req.trail_state.current_predicted_remaining
+
         waiting_queue.sort(key=sprpt_key)
 
     @staticmethod
@@ -341,23 +347,30 @@ class SchedulePolicy:
         waiting_queue: "List[Req]", preemption_threshold: float = 0.5
     ) -> None:
         """TRAIL LSPRPT: SPRPT + limited preemption at 50% threshold."""
+
         def lsprpt_key(req):
             if req.trail_state is None:
                 return (1, float("inf"))
             ts = req.trail_state
             generated_len = len(req.output_ids)
-            if ts.initial_predicted_len > 0 and generated_len > preemption_threshold * ts.initial_predicted_len:
+            if (
+                ts.initial_predicted_len > 0
+                and generated_len > preemption_threshold * ts.initial_predicted_len
+            ):
                 return (0, 0)
             return (1, ts.current_predicted_remaining)
+
         waiting_queue.sort(key=lsprpt_key)
 
     @staticmethod
     def _sort_by_trail_rpsprpt(waiting_queue: "List[Req]") -> None:
         """TRAIL RPSPRPT: refined prediction SRPT (no preemption limit)."""
+
         def rpsprpt_key(req):
             if req.trail_state is None:
                 return float("inf")
             return req.trail_state.current_predicted_remaining
+
         waiting_queue.sort(key=rpsprpt_key)
 
     @staticmethod
@@ -365,14 +378,19 @@ class SchedulePolicy:
         waiting_queue: "List[Req]", preemption_threshold: float = 0.8
     ) -> None:
         """TRAIL LRPSPRPT: refined prediction SRPT + 80% limited preemption."""
+
         def lrpsprpt_key(req):
             if req.trail_state is None:
                 return (1, float("inf"))
             ts = req.trail_state
             generated_len = len(req.output_ids)
-            if ts.initial_predicted_len > 0 and generated_len > preemption_threshold * ts.initial_predicted_len:
-                return (0, 0)  # Un-preemptable
+            if (
+                ts.initial_predicted_len > 0
+                and generated_len > preemption_threshold * ts.initial_predicted_len
+            ):
+                return (0, 0)  # Un-preemptible
             return (1, ts.current_predicted_remaining)
+
         waiting_queue.sort(key=lrpsprpt_key)
 
     @staticmethod
@@ -381,11 +399,14 @@ class SchedulePolicy:
     ) -> int:
         """Compare waiting vs running request for TRAIL preemption.
         Returns > 0 if waiting should preempt running, <= 0 otherwise."""
-        # Running request is un-preemptable
+        # Running request is un-preemptible
         if running_req.trail_state is not None:
             ts = running_req.trail_state
             generated_len = len(running_req.output_ids)
-            if ts.initial_predicted_len > 0 and generated_len > preemption_threshold * ts.initial_predicted_len:
+            if (
+                ts.initial_predicted_len > 0
+                and generated_len > preemption_threshold * ts.initial_predicted_len
+            ):
                 return -1  # Cannot preempt
 
         # Waiting request has no prediction
@@ -393,7 +414,10 @@ class SchedulePolicy:
             # New request without prediction — allow preemption if running
             # has clearly long remaining (> half max output len)
             if running_req.trail_state is not None:
-                if running_req.trail_state.current_predicted_remaining > 256:
+                if (
+                    running_req.trail_state.current_predicted_remaining
+                    > _TRAIL_LONG_REMAINING_THRESHOLD
+                ):
                     return 1  # Let new request try
             return -1
 

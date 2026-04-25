@@ -43,21 +43,22 @@ class SchedulerOutputProcessorMixin:
     We put them into a separate file to make the `scheduler.py` shorter.
     """
 
-
     # --- TRAIL embedding collection ---
 
     def _trail_save_embeddings_buffer(self: "Scheduler"):
         """Flush buffered TRAIL embeddings to disk as a .pt file."""
-        if not hasattr(self, "_trail_embedding_buffer") or not self._trail_embedding_buffer:
+        if (
+            not hasattr(self, "_trail_embedding_buffer")
+            or not self._trail_embedding_buffer
+        ):
             return
 
-        save_dir = getattr(self, "trail_embedding_save_dir", "/tmp/trail_embeddings")
+        save_dir = self.trail_embedding_save_dir
         os.makedirs(save_dir, exist_ok=True)
 
         filename = f"trail_embeddings_{int(time.time() * 1000)}.pt"
         save_path = os.path.join(save_dir, filename)
 
-        import torch
         torch.save(self._trail_embedding_buffer, save_path)
         logger.info(
             f"TRAIL: Saved {len(self._trail_embedding_buffer)} embeddings to {save_path}"
@@ -87,11 +88,13 @@ class SchedulerOutputProcessorMixin:
         for i, req in enumerate(batch.reqs):
             embedding = logits_output.hidden_states[i].cpu().clone().float()
             generated_len = len(req.output_ids)
-            self._trail_embedding_buffer.append({
-                "rid": req.rid,
-                "generated_len": generated_len,
-                "embedding": embedding,
-            })
+            self._trail_embedding_buffer.append(
+                {
+                    "rid": req.rid,
+                    "generated_len": generated_len,
+                    "embedding": embedding,
+                }
+            )
 
         if len(self._trail_embedding_buffer) >= TRAIL_FLUSH_THRESHOLD:
             self._trail_save_embeddings_buffer()
@@ -103,21 +106,24 @@ class SchedulerOutputProcessorMixin:
         if self.trail_classifier is None:
             return
 
-        import torch as trail_torch
         from sglang.srt.managers.schedule_batch import TrailState
 
         hidden = logits_output.hidden_states  # [batch_size, hidden_dim] on GPU
-        with trail_torch.no_grad():
+        with torch.no_grad():
             device = next(self.trail_classifier.parameters()).device
-            logits = self.trail_classifier(hidden.float().to(device))  # [batch_size, num_bins]
-            pred_bins = trail_torch.argmax(logits, dim=1).cpu().numpy()
+            logits = self.trail_classifier(
+                hidden.float().to(device)
+            )  # [batch_size, num_bins]
+            pred_bins = torch.argmax(logits, dim=1).cpu().numpy()
 
         bin_edges = self.trail_bin_edges  # numpy array of bin edges
         for i, req in enumerate(batch.reqs):
             pred_bin = int(pred_bins[i])
             # Convert bin index to predicted remaining tokens (use bin midpoint)
             if pred_bin < len(bin_edges) - 1:
-                predicted_remaining = (bin_edges[pred_bin] + bin_edges[pred_bin + 1]) / 2.0
+                predicted_remaining = (
+                    bin_edges[pred_bin] + bin_edges[pred_bin + 1]
+                ) / 2.0
             else:
                 predicted_remaining = bin_edges[pred_bin]
 
@@ -131,9 +137,6 @@ class SchedulerOutputProcessorMixin:
                 req.trail_state.current_predicted_remaining = predicted_remaining
                 req.trail_state.prediction_count += 1
 
-
-
-
     def _trail_predict_prefill(self, batch, logits_output):
         """Run TRAIL classifier on prefill hidden states to get initial prediction."""
         if logits_output.hidden_states is None:
@@ -141,27 +144,29 @@ class SchedulerOutputProcessorMixin:
         if self.trail_classifier is None:
             return
 
-        import torch as trail_torch
         from sglang.srt.managers.schedule_batch import TrailState
 
         hidden = logits_output.hidden_states  # [num_tokens, hidden_dim]
 
         # Count non-finished, non-chunked requests that completed prefill
-        active_reqs = [r for r in batch.reqs
-                       if not r.finished() and not r.is_retracted and r.is_chunked <= 0]
+        active_reqs = [
+            r
+            for r in batch.reqs
+            if not r.finished() and not r.is_retracted and r.is_chunked <= 0
+        ]
         num_reqs = len(active_reqs)
         if num_reqs == 0:
             return
 
         device = next(self.trail_classifier.parameters()).device
-        with trail_torch.no_grad():
+        with torch.no_grad():
             # For LAST capture mode, hidden_states has one embedding per request
             if hidden.dim() == 2 and hidden.shape[0] >= num_reqs:
                 h = hidden[-num_reqs:]
             else:
                 h = hidden
             logits = self.trail_classifier(h.float().to(device))
-            pred_bins = trail_torch.argmax(logits, dim=1).cpu().numpy()
+            pred_bins = torch.argmax(logits, dim=1).cpu().numpy()
 
         bin_edges = self.trail_bin_edges
         req_idx = 0
@@ -170,7 +175,9 @@ class SchedulerOutputProcessorMixin:
                 break
             pred_bin = int(pred_bins[req_idx])
             if pred_bin < len(bin_edges) - 1:
-                predicted_remaining = (bin_edges[pred_bin] + bin_edges[pred_bin + 1]) / 2.0
+                predicted_remaining = (
+                    bin_edges[pred_bin] + bin_edges[pred_bin + 1]
+                ) / 2.0
             else:
                 predicted_remaining = bin_edges[pred_bin]
 
@@ -180,7 +187,6 @@ class SchedulerOutputProcessorMixin:
                 prediction_count=1,
             )
             req_idx += 1
-
 
     def _get_storage_backend_type(self) -> str:
         """Get storage backend type from tree_cache."""

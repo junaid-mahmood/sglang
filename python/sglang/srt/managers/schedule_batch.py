@@ -555,10 +555,10 @@ class MultimodalInputs:
         # other args would be kept intact
 
 
-
 @dataclasses.dataclass
 class TrailState:
     """TRAIL scheduling state for a request."""
+
     initial_predicted_len: float = 0.0
     current_predicted_remaining: float = 0.0
     prediction_count: int = 0
@@ -2446,7 +2446,9 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
                     if self.trail_capture_mode
                     else (
                         getattr(
-                            self.spec_info, "capture_hidden_mode", CaptureHiddenMode.NULL
+                            self.spec_info,
+                            "capture_hidden_mode",
+                            CaptureHiddenMode.NULL,
                         )
                         if self.spec_info
                         else CaptureHiddenMode.NULL

@@ -6604,21 +6604,24 @@ class ServerArgs:
 
         # Check TRAIL scheduling
         if self.schedule_policy.startswith("trail-"):
-            assert self.trail_classifier_path is not None or self.trail_collect_embeddings, (
+            assert (
+                self.trail_classifier_path is not None or self.trail_collect_embeddings
+            ), (
                 f"TRAIL scheduling policy '{self.schedule_policy}' requires "
                 "--trail-classifier-path or --trail-collect-embeddings"
             )
             if self.trail_classifier_path is not None:
                 import os
-                assert os.path.isfile(self.trail_classifier_path), (
-                    f"TRAIL classifier not found: {self.trail_classifier_path}"
-                )
-            assert 0.0 < self.trail_preemption_threshold <= 1.0, (
-                f"--trail-preemption-threshold must be in (0, 1], got {self.trail_preemption_threshold}"
-            )
-            assert self.trail_capture_layer >= 0, (
-                f"--trail-capture-layer must be non-negative, got {self.trail_capture_layer}"
-            )
+
+                assert os.path.isfile(
+                    self.trail_classifier_path
+                ), f"TRAIL classifier not found: {self.trail_classifier_path}"
+            assert (
+                0.0 < self.trail_preemption_threshold <= 1.0
+            ), f"--trail-preemption-threshold must be in (0, 1], got {self.trail_preemption_threshold}"
+            assert (
+                self.trail_capture_layer >= 0
+            ), f"--trail-capture-layer must be non-negative, got {self.trail_capture_layer}"
         else:
             if self.trail_classifier_path is not None:
                 logger.warning(

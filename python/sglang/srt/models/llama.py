@@ -808,8 +808,6 @@ class LlamaForCausalLM(nn.Module):
         self.capture_aux_hidden_states = True
         self.model.layers_to_capture = [val + 1 for val in layer_ids]
 
-
-
     def set_trail_layer_to_capture(self, layer_id: int = 11):
         """Enable TRAIL embedding extraction from a specific transformer layer.
 
@@ -826,6 +824,7 @@ class LlamaForCausalLM(nn.Module):
         self.capture_aux_hidden_states = True
         # +1 because SGLang captures output of layer (i-1) at index i
         self.model.layers_to_capture = [layer_id + 1]
+
 
 class Phi3ForCausalLM(LlamaForCausalLM):
     pass

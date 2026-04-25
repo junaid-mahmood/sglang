@@ -359,29 +359,36 @@ class Scheduler(
         self.trail_num_bins = server_args.trail_num_bins
         self.trail_max_output_len = server_args.trail_max_output_len
         self.trail_preemption_threshold = server_args.trail_preemption_threshold
-        self.trail_active = self.trail_collect_embeddings or self.trail_classifier_path is not None
+        self.trail_active = (
+            self.trail_collect_embeddings or self.trail_classifier_path is not None
+        )
         self._trail_preempted_this_step = False
 
         # Load TRAIL classifier for online prediction
         self.trail_classifier = None
         self.trail_bin_edges = None
         if self.trail_classifier_path is not None:
-            import torch as trail_torch
-            ckpt = trail_torch.load(self.trail_classifier_path, map_location='cpu', weights_only=False)
-            input_dim = ckpt['input_dim']
-            num_bins = ckpt['num_bins']
-            import numpy as np
-            self.trail_bin_edges = np.array(ckpt['bin_edges'])
-            self.trail_classifier = trail_torch.nn.Sequential(
-                trail_torch.nn.Linear(input_dim, 512),
-                trail_torch.nn.ReLU(),
-                trail_torch.nn.Linear(512, num_bins),
+
+            ckpt = torch.load(
+                self.trail_classifier_path, map_location="cpu", weights_only=False
             )
-            self.trail_classifier.load_state_dict(ckpt['model_state_dict'])
+            input_dim = ckpt["input_dim"]
+            num_bins = ckpt["num_bins"]
+            import numpy as np
+
+            self.trail_bin_edges = np.array(ckpt["bin_edges"])
+            self.trail_classifier = torch.nn.Sequential(
+                torch.nn.Linear(input_dim, 512),
+                torch.nn.ReLU(),
+                torch.nn.Linear(512, num_bins),
+            )
+            self.trail_classifier.load_state_dict(ckpt["model_state_dict"])
             self.trail_classifier.eval()
             self.trail_classifier.cuda()
-            logger.info(f'TRAIL: Loaded classifier from {self.trail_classifier_path} '
-                        f'(input_dim={input_dim}, num_bins={num_bins})')
+            logger.info(
+                f"TRAIL: Loaded classifier from {self.trail_classifier_path} "
+                f"(input_dim={input_dim}, num_bins={num_bins})"
+            )
 
         self.enable_lora = server_args.enable_lora
         self.enable_lora_overlap_loading = server_args.enable_lora_overlap_loading
@@ -2425,7 +2432,6 @@ class Scheduler(
 
         return ret
 
-
     def _trail_preempt_running(self):
         """TRAIL two-pointer preemption: preempt running requests whose predicted
         remaining is longer than waiting requests' predicted remaining.
@@ -2441,7 +2447,10 @@ class Scheduler(
 
         # Only preempt for policies that support it
         if self.schedule_policy not in (
-            "trail-lrpsprpt", "trail-rpsprpt", "trail-sprpt", "trail-lsprpt"
+            "trail-lrpsprpt",
+            "trail-rpsprpt",
+            "trail-sprpt",
+            "trail-lsprpt",
         ):
             return
 
@@ -2457,8 +2466,11 @@ class Scheduler(
                 return (1, float("inf"))
             ts = req.trail_state
             generated_len = len(req.output_ids)
-            if ts.initial_predicted_len > 0 and generated_len > threshold * ts.initial_predicted_len:
-                return (0, 0)  # Un-preemptable
+            if (
+                ts.initial_predicted_len > 0
+                and generated_len > threshold * ts.initial_predicted_len
+            ):
+                return (0, 0)  # Un-preemptible
             return (1, ts.current_predicted_remaining)
 
         # Skip finished requests (same guard as preempt_to_schedule)
@@ -2479,7 +2491,7 @@ class Scheduler(
 
             r_pri = trail_priority(running_req)
             if r_pri == (0, 0):
-                break  # Un-preemptable
+                break  # Un-preemptible
 
             cmp = SchedulePolicy.trail_compare(waiting_req, running_req, threshold)
             if cmp > 0:
