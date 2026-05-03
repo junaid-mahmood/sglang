@@ -76,8 +76,6 @@ IN_BATCH_PREFIX_CACHING_DEPRIORITIZE_THRESHOLD = int(
 
 IGNORE_EOS_RESERVE_TOKENS = 1
 
-# TRAIL: if a running request has predicted remaining tokens above this
-# threshold and the waiting request has no prediction yet, allow preemption.
 _TRAIL_LONG_REMAINING_THRESHOLD = 256
 
 
@@ -172,7 +170,6 @@ class SchedulePolicy:
             elif policy == CacheAgnosticPolicy.TRAIL_SPRPT:
                 SchedulePolicy._sort_by_trail_sprpt(waiting_queue)
             elif policy == CacheAgnosticPolicy.TRAIL_LSPRPT:
-                # Paper Section 4.2: LSPRPT uses a fixed 50% preemption threshold
                 SchedulePolicy._sort_by_trail_lsprpt(waiting_queue, 0.5)
             elif policy == CacheAgnosticPolicy.TRAIL_RPSPRPT:
                 SchedulePolicy._sort_by_trail_rpsprpt(waiting_queue)
@@ -399,7 +396,6 @@ class SchedulePolicy:
     ) -> int:
         """Compare waiting vs running request for TRAIL preemption.
         Returns > 0 if waiting should preempt running, <= 0 otherwise."""
-        # Running request is un-preemptible
         if running_req.trail_state is not None:
             ts = running_req.trail_state
             generated_len = len(running_req.output_ids)
@@ -407,28 +403,23 @@ class SchedulePolicy:
                 ts.initial_predicted_len > 0
                 and generated_len > preemption_threshold * ts.initial_predicted_len
             ):
-                return -1  # Cannot preempt
+                return -1
 
-        # Waiting request has no prediction
         if waiting_req.trail_state is None:
-            # New request without prediction — allow preemption if running
-            # has clearly long remaining (> half max output len)
             if running_req.trail_state is not None:
                 if (
                     running_req.trail_state.current_predicted_remaining
                     > _TRAIL_LONG_REMAINING_THRESHOLD
                 ):
-                    return 1  # Let new request try
+                    return 1
             return -1
 
-        # Running request has no prediction — don't preempt (just started)
         if running_req.trail_state is None:
             return -1
 
         waiting_remaining = waiting_req.trail_state.current_predicted_remaining
         running_remaining = running_req.trail_state.current_predicted_remaining
 
-        # Positive = waiting has shorter remaining = should preempt
         if running_remaining > waiting_remaining:
             return 1
         return -1

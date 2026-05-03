@@ -70,13 +70,7 @@ class SchedulerOutputProcessorMixin:
         batch: "ScheduleBatch",
         logits_output: "LogitsProcessorOutput",
     ):
-        """Collect per-request TRAIL embeddings from a decode batch.
-
-        Each entry is a dict with:
-          - rid: request ID
-          - generated_len: number of tokens generated so far
-          - embedding: layer hidden state tensor (CPU, float32)
-        """
+        """Collect per-request TRAIL embeddings from a decode batch."""
         if logits_output.hidden_states is None:
             return
 

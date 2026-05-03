@@ -2433,8 +2433,7 @@ class Scheduler(
         return ret
 
     def _trail_preempt_running(self):
-        """TRAIL two-pointer preemption: preempt running requests whose predicted
-        remaining is longer than waiting requests' predicted remaining.
+        """Preempt running requests with longer predicted remaining than waiting requests.
         Uses the same release pattern as SGLang's preempt_to_schedule."""
         if not self.trail_active or self.trail_classifier is None:
             return
